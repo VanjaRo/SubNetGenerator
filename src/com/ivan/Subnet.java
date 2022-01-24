@@ -1,18 +1,21 @@
-package com.company;
+package com.ivan;
+
+import com.ivan.exceptions.SubnetException;
 
 import java.io.IOException;
 import java.net.InetAddress;
 
+import java.net.UnknownHostException;
 import java.util.*;
 
 
-public class SubNet {
+public class Subnet {
     static final int BIT_NUMBER = 32;
 
-    private final FileRW fileRW;
+    private final FileReadWriter fileReadWriter;
 
-    public SubNet () {
-        fileRW = new FileRW();
+    public Subnet() {
+        fileReadWriter = new FileReadWriter();
     }
 
     public static byte[] maskToByteIpV4(int mask) {
@@ -40,35 +43,49 @@ public class SubNet {
         return result;
     }
 
-    public static String subNetAddressString(byte[] ipPrefByte, int mask) {
+    public static String subnetAddressString(byte[] ipPrefByte, int mask) {
         StringBuilder subNetAddress = new StringBuilder();
         subNetAddress.append(Integer.valueOf(ipPrefByte[0]));
         for (int i = 1; i < ipPrefByte.length; i++) {
             subNetAddress.append(".").append(Integer.valueOf(ipPrefByte[i]));
         }
-        subNetAddress.append("/" + mask);
+        subNetAddress.append("/").append(mask);
         return subNetAddress.toString();
     }
 
 
-    public void writeSubNetData() throws IOException {
-        List<String> input = fileRW.readSmallTextFile("/data/in.txt");
+    public void writeSubNetData() throws SubnetException {
+        List<String> input;
+        try {
+            input = fileReadWriter.readSmallTextFile("/data/in.txt");
+        } catch (IOException exception) {
+            throw new SubnetException("Can't access the input ('in.txt') file", exception);
+        }
 
 //        get N
         var N = Integer.parseInt(input.get(0));
+        if (N < 0) {
+            throw new SubnetException("Can't be a negative number of trials!");
+        }
 
 //        get ipv4 address
         var address = input.get(1);
 
 //        generate N random masks for the address
-        byte[] bytesIp = InetAddress.getByName(address).getAddress();
+        byte[] bytesIp;
+        try {
+            bytesIp = InetAddress.getByName(address).getAddress();
+        } catch (UnknownHostException exception) {
+            throw new SubnetException("Error parsing the IPV4 address", exception);
+        }
+
         int biggestMask = -1;
-        int maxBits = SubNet.BIT_NUMBER - 2;
+        int maxBits = Subnet.BIT_NUMBER - 2;
         int minBits = 8;
 
         int biggestInd = 0;
         Set<Integer> masksSet = new HashSet<>();
-        List<String> generatedSubNetAddress = new ArrayList<>();
+        List<String> generatedSubnetAddress = new ArrayList<>();
         List<String> biggestIpAddress = new ArrayList<>();
 
         biggestIpAddress.add(address);
@@ -78,21 +95,31 @@ public class SubNet {
                 continue;
             }
             masksSet.add(randomInt);
-            byte[] bytesMask = SubNet.maskToByteIpV4(randomInt);
-            byte[] netPref = SubNet.getNetPrefByteIpV4(bytesIp, bytesMask);
+            byte[] bytesMask = Subnet.maskToByteIpV4(randomInt);
+            byte[] netPref = Subnet.getNetPrefByteIpV4(bytesIp, bytesMask);
 
-            generatedSubNetAddress.add(SubNet.subNetAddressString(netPref, randomInt));
+            generatedSubnetAddress.add(Subnet.subnetAddressString(netPref, randomInt));
 
             if (randomInt > biggestMask) {
                 biggestMask = randomInt;
-                biggestInd = generatedSubNetAddress.size()-1;
+                biggestInd = generatedSubnetAddress.size() - 1;
             }
 
         }
-        biggestIpAddress.add(generatedSubNetAddress.get(biggestInd));
+        biggestIpAddress.add(generatedSubnetAddress.get(biggestInd));
+        try {
+            fileReadWriter.writeSmallTextFile(generatedSubnetAddress, "/data/autogen.txt");
+        } catch (IOException exception) {
+            throw new SubnetException("Error writing to the autogen.txt file", exception);
+        }
 
-        fileRW.writeSmallTextFile(generatedSubNetAddress, "/data/autogen.txt");
-        fileRW.writeSmallTextFile(biggestIpAddress, "/data/out.txt");
+        try {
+            fileReadWriter.writeSmallTextFile(biggestIpAddress, "/data/out.txt");
+        } catch (IOException exception) {
+            throw new SubnetException("Error writing to the out.txt file", exception);
+        }
+
+
     }
 
 
