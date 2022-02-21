@@ -13,29 +13,30 @@ public class Subnet {
     static final int BIT_NUMBER = 32;
 
     private final FileReadWriter fileReadWriter;
+    private final RandomIntGenerator randomGenerator;
 
     public Subnet() {
         fileReadWriter = new FileReadWriter();
+        randomGenerator = new RandomIntGenerator();
     }
 
-    public static byte[] maskToByteIpV4(int mask) {
+    private static byte[] maskToByteIpV4(int mask) {
         byte[] maskByte = new byte[4];
         for (int i = 0; i < 4; i++) {
-            StringBuilder binary = new StringBuilder(8);
+            byte binary = 0;
             for (int j = 0; j < 8; j++) {
+                binary = (byte) (binary << 1);
                 if (mask > 0) {
-                    binary.append("1");
-                } else {
-                    binary.append("0");
+                    binary++;
                 }
                 mask -= 1;
             }
-            maskByte[i] = Integer.valueOf(Integer.parseInt(binary.toString(), 2)).byteValue();
+            maskByte[i] = binary;
         }
         return maskByte;
     }
 
-    public static byte[] getNetPrefByteIpV4(byte[] ipByte, byte[] maskByte) {
+    private static byte[] getNetPrefByteIpV4(byte[] ipByte, byte[] maskByte) {
         byte[] result = new byte[4];
         for (int i = 0; i < 4; i++) {
             result[i] = (byte) (maskByte[i] & ipByte[i]);
@@ -43,11 +44,28 @@ public class Subnet {
         return result;
     }
 
-    public static String subnetAddressString(byte[] ipPrefByte, int mask) {
+    private byte[] generateNetPrefByteIpV4() {
+        byte[] result = new byte[4];
+        for (int i = 0; i < 4; i++) {
+            result[i] = (byte) randomGenerator.getRandomNumber(0, 255);
+        }
+        return result;
+    }
+
+    private boolean equalNetPref(byte[] firstNetPref, byte[] secondNetPref) {
+        for (int i = 0; i < 4; i++) {
+            if (firstNetPref[i] != secondNetPref[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String subnetAddressString(byte[] ipPrefByte, int mask) {
         StringBuilder subNetAddress = new StringBuilder();
-        subNetAddress.append(Integer.valueOf(ipPrefByte[0]));
+        subNetAddress.append(Byte.toUnsignedInt(ipPrefByte[0]));
         for (int i = 1; i < ipPrefByte.length; i++) {
-            subNetAddress.append(".").append(Integer.valueOf(ipPrefByte[i]));
+            subNetAddress.append(".").append(Byte.toUnsignedInt(ipPrefByte[i]));
         }
         subNetAddress.append("/").append(mask);
         return subNetAddress.toString();
@@ -80,33 +98,38 @@ public class Subnet {
         }
 
         int biggestMask = -1;
-        int maxBits = Subnet.BIT_NUMBER - 2;
-        int minBits = 8;
+        int biggestInd = -1;
 
-        int biggestInd = 0;
-        Set<Integer> masksSet = new HashSet<>();
+        int minBits = 0;
+
         List<String> generatedSubnetAddress = new ArrayList<>();
         List<String> biggestIpAddress = new ArrayList<>();
 
         biggestIpAddress.add(address);
         for (int i = 0; i < N; i++) {
-            int randomInt = (int) Math.floor(Math.random() * (maxBits - minBits + 1) + minBits);
-            if (masksSet.contains(randomInt)) {
-                continue;
-            }
-            masksSet.add(randomInt);
-            byte[] bytesMask = Subnet.maskToByteIpV4(randomInt);
-            byte[] netPref = Subnet.getNetPrefByteIpV4(bytesIp, bytesMask);
+            int generatedIntMask = randomGenerator.getRandomNumber(minBits, BIT_NUMBER);
+            byte[] generatedIp = generateNetPrefByteIpV4();
 
-            generatedSubnetAddress.add(Subnet.subnetAddressString(netPref, randomInt));
+            byte[] generatedBytesMask = maskToByteIpV4(generatedIntMask);
+            byte[] generatedNetPref = getNetPrefByteIpV4(generatedIp, generatedBytesMask);
 
-            if (randomInt > biggestMask) {
-                biggestMask = randomInt;
+            byte[] givenNetPref = getNetPrefByteIpV4(bytesIp, generatedBytesMask);
+
+            generatedSubnetAddress.add(subnetAddressString(generatedNetPref, generatedIntMask));
+
+            if (equalNetPref(givenNetPref, generatedNetPref) && generatedIntMask > biggestMask) {
+                biggestMask = generatedIntMask;
                 biggestInd = generatedSubnetAddress.size() - 1;
             }
 
         }
-        biggestIpAddress.add(generatedSubnetAddress.get(biggestInd));
+        if (biggestInd == -1) {
+//            if no subnet found –– show the widest subnet
+            biggestIpAddress.add("0.0.0.0/0");
+        } else {
+            biggestIpAddress.add(generatedSubnetAddress.get(biggestInd));
+        }
+
         try {
             fileReadWriter.writeSmallTextFile(generatedSubnetAddress, "/data/autogen.txt");
         } catch (IOException exception) {
